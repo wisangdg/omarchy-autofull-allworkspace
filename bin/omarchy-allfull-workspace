@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# omarchy:summary=AutoFull Allworkspace: open every window fullscreen (toggle SUPER+ALT+X)
+# omarchy:args=[on|off|toggle|status|mode [fullscreen|maximized]|cycle|bar]
+
+set -euo pipefail
+
+STATE_DIR="$HOME/.local/state/omarchy/toggles/hypr"
+RULE_FILE="$STATE_DIR/allfull-workspace.lua"
+CONF="$HOME/.config/omarchy/allfull-workspace.conf"
+
+# "maximized" = SUPER+ALT+F (full width, keeps bar and gaps)
+# "fullscreen" = SUPER+F (true fullscreen, hides bar)
+read_mode() {
+  local mode=maximized
+  if [[ -f $CONF ]]; then
+    mode=$(sed -n 's/^[[:space:]]*mode[[:space:]]*=[[:space:]]*//p' "$CONF" | tail -n1)
+  fi
+  case $mode in
+  fullscreen | maximized) printf '%s' "$mode" ;;
+  *) printf 'maximized' ;;
+  esac
+}
+
+# Static rule: applies to windows opened from now on. Only ever touched at
+# toggle time, so a manual SUPER+F is never fought on unrelated reloads.
+write_rule() {
+  mkdir -p "$STATE_DIR"
+  if [[ $1 == fullscreen ]]; then
+    printf -- '-- Allfull workspace (generated): every new window opens fullscreen.\no.window(".*", { fullscreen = true })\n' >"$RULE_FILE"
+  else
+    printf -- '-- Allfull workspace (generated): every new window opens maximized (full width).\no.window(".*", { maximize = true })\n' >"$RULE_FILE"
+  fi
+  hyprctl reload >/dev/null
+}
+
+apply_to_open_windows() {
+  if [[ $1 == on ]]; then
+    local mode
+    mode=$(read_mode)
+    hyprctl eval "local m='$mode' ; for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen({ mode=m, action='set', window=w })) end" >/dev/null
+  else
+    hyprctl eval "for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen_state({ internal=0, client=0, action='set', window=w })) end" >/dev/null
+  fi
+}
+
+is_on() { [[ -f $RULE_FILE ]]; }
+
+notify() { omarchy-notification-send -u low "$1" >/dev/null 2>&1 || true; }
+
+enable() {
+  write_rule "$(read_mode)"
+  apply_to_open_windows on
+  notify "AutoFull : On"
+}
+
+disable() {
+  rm -f "$RULE_FILE"
+  hyprctl reload >/dev/null
+  apply_to_open_windows off
+  notify "AutoFull : Off"
+}
+
+set_mode() {
+  mkdir -p "$(dirname "$CONF")"
+  printf 'mode=%s\n' "$1" >"$CONF"
+  if is_on; then
+    write_rule "$1"
+    apply_to_open_windows on
+  fi
+  if [[ $1 == fullscreen ]]; then notify "AutoFull : Full (SUPER+F)"; else notify "AutoFull : Full width (SUPER+ALT+F)"; fi
+}
+
+case "${1:-toggle}" in
+on) enable ;;
+off) disable ;;
+toggle)
+  if is_on; then disable; else enable; fi
+  ;;
+status)
+  if is_on; then echo "on ($(read_mode))"; else echo "off"; fi
+  ;;
+mode)
+  case "${2:-}" in
+  fullscreen | maximized) set_mode "$2" ;;
+  "") echo "$(read_mode)" ;;
+  *)
+    echo "mode must be 'fullscreen' or 'maximized'" >&2
+    exit 1
+    ;;
+  esac
+  ;;
+cycle)
+  if [[ $(read_mode) == fullscreen ]]; then set_mode maximized; else set_mode fullscreen; fi
+  ;;
+bar)
+  if is_on; then printf 'on:%s\n' "$(read_mode)"; else printf 'off:%s\n' "$(read_mode)"; fi
+  ;;
+*)
+  echo "usage: omarchy-allfull-workspace [on|off|toggle|status|mode [fullscreen|maximized]|cycle|bar]" >&2
+  exit 1
+  ;;
+esac

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "wdg.allfull",
+  "name": "AutoFull Allworkspace",
+  "version": "1.0.0",
+  "author": "wdg",
+  "description": "Toggle every new window opening fullscreen",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Allfull.qml"
+  },
+  "barWidget": {
+    "displayName": "AutoFull Allworkspace",
+    "description": "Toggle fullscreen-for-every-window (SUPER+ALT+X)",
+    "category": "Compositor",
+    "allowMultiple": false
+  }
+}
