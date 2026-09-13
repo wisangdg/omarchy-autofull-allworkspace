@@ -1,20 +1,26 @@
 #!/bin/bash
 
 # omarchy:summary=AutoFull Allworkspace: open every window fullscreen (toggle SUPER+ALT+X)
-# omarchy:args=[on|off|toggle|status|mode [fullscreen|maximized]|cycle|bar]
+# omarchy:args=[on|off|toggle|status|mode [fullscreen|maximized]|cycle|sync|bar]
 
 set -euo pipefail
 
-STATE_DIR="$HOME/.local/state/omarchy/toggles/hypr"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr"
 RULE_FILE="$STATE_DIR/autofull-workspace.lua"
-CONF="$HOME/.config/omarchy/autofull-workspace.conf"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/autofull-workspace.conf"
+
+# Serialize writers and readers so probes cannot report a half-applied change.
+# Keep the lock outside the rules directory; it must never be replaced.
+mkdir -p "$STATE_DIR" "$(dirname "$CONF")"
+exec 9>"$STATE_DIR/../.autofull-workspace.lock"
+flock -x 9
 
 # "maximized" = SUPER+ALT+F (full width, keeps bar and gaps)
 # "fullscreen" = SUPER+F (true fullscreen, hides bar)
 read_mode() {
   local mode=maximized
   if [[ -f $CONF ]]; then
-    mode=$(sed -n 's/^[[:space:]]*mode[[:space:]]*=[[:space:]]*//p' "$CONF" | tail -n1)
+    mode=$(sed -n 's/^[[:space:]]*mode[[:space:]]*=[[:space:]]*//p' "$CONF" | sed 's/[[:space:]]*$//' | tail -n1)
   fi
   case $mode in
   fullscreen | maximized) printf '%s' "$mode" ;;
@@ -22,25 +28,53 @@ read_mode() {
   esac
 }
 
-# Static rule: applies to windows opened from now on. Only ever touched at
-# toggle time, so a manual SUPER+F is never fought on unrelated reloads.
-write_rule() {
-  mkdir -p "$STATE_DIR"
-  if [[ $1 == fullscreen ]]; then
-    printf -- '-- AutoFull Allworkspace (generated): every new window opens fullscreen.\no.window(".*", { fullscreen = true })\n' >"$RULE_FILE"
+# Report the installed rule while enabled, even if an edited config is still
+# waiting to be synchronized (or its reload failed).
+active_mode() {
+  if grep -q 'fullscreen = true' "$RULE_FILE"; then
+    printf 'fullscreen'
   else
-    printf -- '-- AutoFull Allworkspace (generated): every new window opens maximized (full width).\no.window(".*", { maximize = true })\n' >"$RULE_FILE"
+    printf 'maximized'
   fi
-  hyprctl reload >/dev/null
+}
+
+display_mode() {
+  if is_on; then active_mode; else read_mode; fi
+}
+
+# Replace complete files atomically. Temporary files have no .lua suffix, so
+# Omarchy cannot load a partial rule during an unrelated reload.
+atomic_write() {
+  local target=$1 temp
+  temp=$(mktemp "$(dirname "$target")/.autofull.XXXXXX") || return
+  if cat >"$temp" && mv -f -- "$temp" "$target"; then
+    return 0
+  fi
+  rm -f -- "$temp"
+  return 1
+}
+
+# Static rules only affect newly opened windows. Sync touches them only when
+# the requested mode changes, preserving manual window overrides on reload.
+write_rule() {
+  if [[ $1 == fullscreen ]]; then
+    printf -- '-- AutoFull Allworkspace (generated): every new window opens fullscreen.\no.window(".*", { fullscreen = true })\n' | atomic_write "$RULE_FILE"
+  else
+    printf -- '-- AutoFull Allworkspace (generated): every new window opens maximized (full width).\no.window(".*", { maximize = true })\n' | atomic_write "$RULE_FILE"
+  fi
 }
 
 apply_to_open_windows() {
-  if [[ $1 == on ]]; then
-    local mode
-    mode=$(read_mode)
-    hyprctl eval "local m='$mode' ; for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen({ mode=m, action='set', window=w })) end" >/dev/null
+  local expression
+  if [[ $1 != off ]]; then
+    expression="local m='$1' ; for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen({ mode=m, action='set', window=w })) end"
   else
-    hyprctl eval "for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen_state({ internal=0, client=0, action='set', window=w })) end" >/dev/null
+    expression="for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen_state({ internal=0, client=0, action='set', window=w })) end"
+  fi
+  if ! hyprctl eval "$expression"; then
+    echo "AutoFull: rule updated, but adjusting existing windows failed." >&2
+    notify "AutoFull: failed to adjust existing windows"
+    return 1
   fi
 }
 
@@ -48,27 +82,92 @@ is_on() { [[ -f $RULE_FILE ]]; }
 
 notify() { omarchy-notification-send -u low "$1" >/dev/null 2>&1 || true; }
 
+# The subshell's EXIT trap also rolls back on interrupted or failed writes.
+# Commit after reload succeeds; a later window-dispatch failure does not undo
+# a rule that Hyprland has already accepted.
+commit_state() (
+  local state=$1 mode=$2 save_mode=${3:-no} transaction committed=false
+  transaction=$(mktemp -d "$STATE_DIR/../.autofull-transaction.XXXXXX")
+  if is_on; then cp -- "$RULE_FILE" "$transaction/rule"; fi
+  if [[ -f $CONF ]]; then cp -- "$CONF" "$transaction/conf"; fi
+
+  finish_transaction() {
+    local result=$1 restored=true
+    trap - EXIT INT TERM
+    if [[ $committed != true ]]; then
+      if [[ -f $transaction/rule ]]; then
+        atomic_write "$RULE_FILE" <"$transaction/rule" || restored=false
+      else
+        rm -f -- "$RULE_FILE" || restored=false
+      fi
+      if [[ $save_mode == yes ]]; then
+        if [[ -f $transaction/conf ]]; then
+          atomic_write "$CONF" <"$transaction/conf" || restored=false
+        else
+          rm -f -- "$CONF" || restored=false
+        fi
+      fi
+      if ! hyprctl reload; then
+        echo "AutoFull: rollback reload failed; compositor state could not be verified." >&2
+      fi
+      echo "AutoFull: update failed; previous configuration restored: $restored." >&2
+      notify "AutoFull: update failed"
+      if [[ $restored != true ]]; then
+        echo "AutoFull: recovery files retained at $transaction" >&2
+        exit 1
+      fi
+    fi
+    rm -f -- "$transaction/rule" "$transaction/conf"
+    rmdir -- "$transaction"
+    exit "$result"
+  }
+  trap 'finish_transaction "$?"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  if [[ $save_mode == yes ]]; then
+    printf 'mode=%s\n' "$mode" | atomic_write "$CONF"
+  fi
+  if [[ $state == on ]]; then
+    write_rule "$mode"
+  else
+    rm -f -- "$RULE_FILE"
+  fi
+  hyprctl reload
+  committed=true
+)
+
 enable() {
-  write_rule "$(read_mode)"
-  apply_to_open_windows on
+  local mode
+  mode=$(read_mode)
+  commit_state on "$mode"
+  apply_to_open_windows "$mode"
   notify "AutoFull : On"
 }
 
 disable() {
-  rm -f "$RULE_FILE"
-  hyprctl reload >/dev/null
+  commit_state off "$(read_mode)"
   apply_to_open_windows off
   notify "AutoFull : Off"
 }
 
 set_mode() {
-  mkdir -p "$(dirname "$CONF")"
-  printf 'mode=%s\n' "$1" >"$CONF"
   if is_on; then
-    write_rule "$1"
-    apply_to_open_windows on
+    commit_state on "$1" yes
+    apply_to_open_windows "$1"
+  else
+    printf 'mode=%s\n' "$1" | atomic_write "$CONF"
   fi
   if [[ $1 == fullscreen ]]; then notify "AutoFull : Full (SUPER+F)"; else notify "AutoFull : Full width (SUPER+ALT+F)"; fi
+}
+
+sync_mode() {
+  local mode
+  mode=$(read_mode)
+  if is_on && [[ $(active_mode) != "$mode" ]]; then
+    commit_state on "$mode"
+    apply_to_open_windows "$mode"
+  fi
 }
 
 case "${1:-toggle}" in
@@ -78,7 +177,7 @@ toggle)
   if is_on; then disable; else enable; fi
   ;;
 status)
-  if is_on; then echo "on ($(read_mode))"; else echo "off"; fi
+  if is_on; then echo "on ($(active_mode))"; else echo "off"; fi
   ;;
 mode)
   case "${2:-}" in
@@ -93,11 +192,12 @@ mode)
 cycle)
   if [[ $(read_mode) == fullscreen ]]; then set_mode maximized; else set_mode fullscreen; fi
   ;;
+sync) sync_mode ;;
 bar)
-  if is_on; then printf 'on:%s\n' "$(read_mode)"; else printf 'off:%s\n' "$(read_mode)"; fi
+  if is_on; then printf 'on:%s\n' "$(display_mode)"; else printf 'off:%s\n' "$(display_mode)"; fi
   ;;
 *)
-  echo "usage: omarchy-autofull-workspace [on|off|toggle|status|mode [fullscreen|maximized]|cycle|bar]" >&2
+  echo "usage: omarchy-autofull-workspace [on|off|toggle|status|mode [fullscreen|maximized]|cycle|sync|bar]" >&2
   exit 1
   ;;
 esac

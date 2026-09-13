@@ -19,6 +19,8 @@ fullscreen flavours.
   it stays that way — even across config reloads. Reopen the app, or toggle
   off → on, to expand again.
 - State persists across reloads and reboots.
+- Failed config reloads restore the previous rule and saved mode.
+- Honors `XDG_STATE_HOME` and `XDG_CONFIG_HOME` (including custom paths).
 
 ## Install
 
@@ -84,11 +86,18 @@ omarchy-autofull-workspace mode maximized
 omarchy-autofull-workspace bar      # print "on:maximized", "off:fullscreen", ...
 ```
 
-Or edit `~/.config/omarchy/autofull-workspace.conf`:
+Or edit `~/.config/omarchy/autofull-workspace.conf`
+(`$XDG_CONFIG_HOME/omarchy/autofull-workspace.conf` when set):
 
 ```
 mode=maximized
 ```
+
+While the bar widget is running, it automatically applies edits to this file.
+Without the widget, run `omarchy-autofull-workspace sync` after editing. Sync
+does nothing while AutoFull is off, and an unchanged mode never re-expands
+windows you manually restored. While enabled, `status` and `bar` report the
+installed rule's mode, so a pending or failed edit is not shown as applied.
 
 ## How it works
 
@@ -101,6 +110,28 @@ The plugin writes a plain Hyprland Lua toggle:
 - Disabling removes the rule and clears fullscreen/maximized on every window.
 - The rule only ever affects windows opened while it is active; it is never
   re-applied on reload, which is why manual changes stick.
+- Rule and configuration writes are atomic, and commands are serialized.
+  If reload fails, the previous files are restored and a recovery reload is
+  attempted. Failures are reported instead of sending a success notification.
+- If adjusting existing windows fails after a successful reload, the installed
+  rule remains active and the command reports that the window update failed.
+
+The paths above use the default XDG directories. When `XDG_STATE_HOME` or
+`XDG_CONFIG_HOME` is set to a nonempty value, both the helper and widget use
+that location instead. A bare `hyprctl reload` does not synchronize a manually
+edited mode; use the widget or the `sync` command.
+
+## Development checks
+
+```bash
+bash -n bin/omarchy-autofull-workspace
+python3 -m unittest discover -s tests -v
+AUTOFULL_QML_TESTS=1 python3 -m unittest discover -s tests -v
+```
+
+Tests use temporary XDG directories and a mock `hyprctl`; they never resize
+desktop windows. The last command also tests the actual widget in headless
+Quickshell with minimal host UI stubs.
 
 ## Files
 
@@ -117,7 +148,7 @@ wdg.autofull/
 ## Uninstall
 
 ```bash
-omarchy-autofull-workspace off
+"${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/wdg.autofull/bin/omarchy-autofull-workspace" off
 omarchy plugin remove wdg.autofull
 rm -f ~/.local/bin/omarchy-autofull-workspace \
       ~/.config/omarchy/autofull-workspace.conf
