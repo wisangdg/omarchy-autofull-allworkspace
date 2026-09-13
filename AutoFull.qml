@@ -5,7 +5,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "wdg.allfull"
+  moduleName: "wdg.autofull"
 
   property bool isOn: false
   property string mode: "maximized"
@@ -14,7 +14,7 @@ BarWidget {
 
   // Bundled toggle script, resolved relative to this file so the plugin is
   // self-contained wherever it is installed.
-  readonly property string scriptPath: Qt.resolvedUrl("bin/omarchy-allfull-workspace").toString().replace("file://", "")
+  readonly property string scriptPath: Qt.resolvedUrl("bin/omarchy-autofull-workspace").toString().replace("file://", "")
 
   function refresh() {
     probe.running = true
@@ -60,7 +60,7 @@ BarWidget {
   }
 
   FileView {
-    path: Quickshell.env("HOME") + "/.config/omarchy/allfull-workspace.conf"
+    path: Quickshell.env("HOME") + "/.config/omarchy/autofull-workspace.conf"
     watchChanges: true
     printErrors: false
     onFileChanged: root.refresh()

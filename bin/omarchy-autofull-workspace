@@ -6,8 +6,8 @@
 set -euo pipefail
 
 STATE_DIR="$HOME/.local/state/omarchy/toggles/hypr"
-RULE_FILE="$STATE_DIR/allfull-workspace.lua"
-CONF="$HOME/.config/omarchy/allfull-workspace.conf"
+RULE_FILE="$STATE_DIR/autofull-workspace.lua"
+CONF="$HOME/.config/omarchy/autofull-workspace.conf"
 
 # "maximized" = SUPER+ALT+F (full width, keeps bar and gaps)
 # "fullscreen" = SUPER+F (true fullscreen, hides bar)
@@ -27,9 +27,9 @@ read_mode() {
 write_rule() {
   mkdir -p "$STATE_DIR"
   if [[ $1 == fullscreen ]]; then
-    printf -- '-- Allfull workspace (generated): every new window opens fullscreen.\no.window(".*", { fullscreen = true })\n' >"$RULE_FILE"
+    printf -- '-- AutoFull Allworkspace (generated): every new window opens fullscreen.\no.window(".*", { fullscreen = true })\n' >"$RULE_FILE"
   else
-    printf -- '-- Allfull workspace (generated): every new window opens maximized (full width).\no.window(".*", { maximize = true })\n' >"$RULE_FILE"
+    printf -- '-- AutoFull Allworkspace (generated): every new window opens maximized (full width).\no.window(".*", { maximize = true })\n' >"$RULE_FILE"
   fi
   hyprctl reload >/dev/null
 }
@@ -97,7 +97,7 @@ bar)
   if is_on; then printf 'on:%s\n' "$(read_mode)"; else printf 'off:%s\n' "$(read_mode)"; fi
   ;;
 *)
-  echo "usage: omarchy-allfull-workspace [on|off|toggle|status|mode [fullscreen|maximized]|cycle|bar]" >&2
+  echo "usage: omarchy-autofull-workspace [on|off|toggle|status|mode [fullscreen|maximized]|cycle|bar]" >&2
   exit 1
   ;;
 esac

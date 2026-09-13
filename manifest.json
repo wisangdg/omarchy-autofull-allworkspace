@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "wdg.allfull",
+  "id": "wdg.autofull",
   "name": "AutoFull Allworkspace",
   "version": "1.0.0",
   "author": "wdg",
@@ -9,7 +9,7 @@
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "Allfull.qml"
+    "barWidget": "AutoFull.qml"
   },
   "barWidget": {
     "displayName": "AutoFull Allworkspace",

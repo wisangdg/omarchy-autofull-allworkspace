@@ -36,14 +36,14 @@ bundled inside the plugin).
 Copy the helper onto your `PATH`:
 
 ```bash
-install -Dm755 ~/.config/omarchy/plugins/wdg.allfull/bin/omarchy-allfull-workspace \
-  ~/.local/bin/omarchy-allfull-workspace
+install -Dm755 ~/.config/omarchy/plugins/wdg.autofull/bin/omarchy-autofull-workspace \
+  ~/.local/bin/omarchy-autofull-workspace
 ```
 
 Add the binding to `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + X", "AutoFull Allworkspace (toggle)", "omarchy-allfull-workspace")
+o.bind("SUPER + ALT + X", "AutoFull Allworkspace (toggle)", "omarchy-autofull-workspace")
 ```
 
 Then reload Hyprland (`hyprctl reload`).
@@ -52,8 +52,8 @@ Then reload Hyprland (`hyprctl reload`).
 
 ```bash
 git clone https://github.com/wisangdg/omarchy-autofull-allworkspace \
-  ~/.config/omarchy/plugins/wdg.allfull
-omarchy plugin enable wdg.allfull
+  ~/.config/omarchy/plugins/wdg.autofull
+omarchy plugin enable wdg.autofull
 ```
 
 ## Usage & shortcuts
@@ -79,12 +79,12 @@ Hover it for a tooltip showing the current state and mode.
 Switch mode from the icon (right-click) or from the command line:
 
 ```bash
-omarchy-allfull-workspace mode fullscreen
-omarchy-allfull-workspace mode maximized
-omarchy-allfull-workspace bar      # print "on:maximized", "off:fullscreen", ...
+omarchy-autofull-workspace mode fullscreen
+omarchy-autofull-workspace mode maximized
+omarchy-autofull-workspace bar      # print "on:maximized", "off:fullscreen", ...
 ```
 
-Or edit `~/.config/omarchy/allfull-workspace.conf`:
+Or edit `~/.config/omarchy/autofull-workspace.conf`:
 
 ```
 mode=maximized
@@ -94,7 +94,7 @@ mode=maximized
 
 The plugin writes a plain Hyprland Lua toggle:
 
-- `~/.local/state/omarchy/toggles/hypr/allfull-workspace.lua` — the window rule
+- `~/.local/state/omarchy/toggles/hypr/autofull-workspace.lua` — the window rule
   (`o.window(".*", { maximize = true })` or `{ fullscreen = true }`), which is
   auto-loaded by Omarchy on `hyprctl reload`.
 - Enabling writes the rule and expands currently open windows once.
@@ -105,10 +105,10 @@ The plugin writes a plain Hyprland Lua toggle:
 ## Files
 
 ```
-wdg.allfull/
+wdg.autofull/
 ├── manifest.json                 plugin manifest
-├── Allfull.qml                   bar widget (icon, tooltip, click handling)
-├── bin/omarchy-allfull-workspace toggle + mode CLI
+├── AutoFull.qml                   bar widget (icon, tooltip, click handling)
+├── bin/omarchy-autofull-workspace toggle + mode CLI
 ├── preview.png / preview.svg     marketplace preview
 ├── README.md
 └── LICENSE
@@ -117,10 +117,10 @@ wdg.allfull/
 ## Uninstall
 
 ```bash
-omarchy-allfull-workspace off
-omarchy plugin remove wdg.allfull
-rm -f ~/.local/bin/omarchy-allfull-workspace \
-      ~/.config/omarchy/allfull-workspace.conf
+omarchy-autofull-workspace off
+omarchy plugin remove wdg.autofull
+rm -f ~/.local/bin/omarchy-autofull-workspace \
+      ~/.config/omarchy/autofull-workspace.conf
 ```
 
 Then remove the `SUPER + ALT + X` binding from
