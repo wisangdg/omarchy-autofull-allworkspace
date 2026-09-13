@@ -3,7 +3,7 @@
   "id": "wdg.autofull",
   "name": "AutoFull Allworkspace",
   "version": "1.0.0",
-  "author": "wdg",
+  "author": "Wisang Drillian",
   "description": "Open every new window fullscreen automatically on Hyprland — toggle it from the bar or with SUPER+ALT+X, and pick true fullscreen (SUPER+F) or full width (SUPER+ALT+F). Windows already open adapt the moment you toggle.",
   "kinds": [
     "bar-widget"
