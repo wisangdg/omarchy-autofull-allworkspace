@@ -50,14 +50,6 @@ o.bind("SUPER + ALT + X", "AutoFull Allworkspace (toggle)", "omarchy-autofull-wo
 
 Then reload Hyprland (`hyprctl reload`).
 
-### Manual / development install
-
-```bash
-git clone https://github.com/wisangdg/omarchy-autofull-allworkspace \
-  ~/.config/omarchy/plugins/wdg.autofull
-omarchy plugin enable wdg.autofull
-```
-
 ## Usage & shortcuts
 
 | Action | Shortcut | Works out of the box |
