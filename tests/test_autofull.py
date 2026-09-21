@@ -140,6 +140,35 @@ print("ok")
         self.assertEqual(self.run_cli("bar").stdout.strip(), "off:fullscreen")
         self.assertEqual(self.calls(), [])
 
+    def test_off_restore_is_noop(self):
+        self.run_cli("restore")
+        self.assertEqual(self.calls(), [])
+        self.assertFalse(self.rule.exists())
+        self.assertFalse(self.conf.exists())
+
+    def test_restore_uses_installed_mode_without_writes_or_reload(self):
+        for mode, pending in (("maximized", "fullscreen"), ("fullscreen", "maximized")):
+            with self.subTest(mode=mode):
+                self.run_cli("mode", mode)
+                self.run_cli("on")
+                self.conf.write_text("mode=" + pending + "\n")
+                original = [(p.read_bytes(), p.stat().st_mtime_ns) for p in (self.rule, self.conf)]
+                count = len(self.calls())
+                self.run_cli("restore")
+                self.assertEqual(len(self.calls()), count + 1)
+                self.assertEqual(self.calls()[-1][0], "eval")
+                self.assertIn("local m='" + mode + "'", self.calls()[-1][1])
+                self.assertEqual([(p.read_bytes(), p.stat().st_mtime_ns) for p in (self.rule, self.conf)], original)
+
+    def test_failed_restore_can_retry(self):
+        self.run_cli("on")
+        original = self.rule.read_bytes()
+        self.fail_next("eval")
+        self.run_cli("restore", success=False)
+        self.run_cli("restore")
+        self.assertEqual(self.rule.read_bytes(), original)
+        self.assertEqual([call[0] for call in self.calls()], ["reload", "eval", "eval", "eval"])
+
     def test_dispatch_failure_does_not_claim_success(self):
         self.fail_next("eval")
         result = self.run_cli("on", success=False)
@@ -188,7 +217,7 @@ import Quickshell
 ShellRoot {
  AutoFull { id: widget }
  Timer { interval: 50; running: true; repeat: true; onTriggered: console.log("AUDIT_STATE", widget.isOn, widget.mode) }
- Timer { interval: 15000; running: true; onTriggered: Qt.quit() }
+ Timer { interval: 30000; running: true; onTriggered: Qt.quit() }
 }
 ''')
         qml_log = self.root / "qml.log"
@@ -218,8 +247,39 @@ ShellRoot {
                 self.assertIn("fullscreen = true", self.rule.read_text())
                 (self.root / "delay").unlink()
 
+                def recovery_event():
+                    result = subprocess.run(
+                        ["quickshell", "ipc", "-p", str(self.root / "shell.qml"), "call", "autofull", "restore"],
+                        env=dict(self.env, QT_QPA_PLATFORM="offscreen"),
+                        text=True, capture_output=True, timeout=5)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertNotIn("not found", result.stdout.lower())
+
+                count = len(self.calls())
+                self.fail_next("eval")
+                recovery_event()
+                recovery_event()
+                self.wait_until(lambda: len(self.calls()) == count + 2)
+                time.sleep(1.2)
+                self.assertEqual(len(self.calls()), count + 2)
+                self.assertEqual([call[0] for call in self.calls()[count:]], ["eval", "eval"])
+
+                count = len(self.calls())
+                (self.root / "delay").write_text("1.2")
+                recovery_event()
+                self.wait_until(lambda: len(self.calls()) == count + 1)
+                recovery_event()
+                self.wait_until(lambda: len(self.calls()) == count + 2)
+                time.sleep(1.4)
+                (self.root / "delay").unlink()
+                self.assertEqual(len(self.calls()), count + 2)
+
                 self.run_cli("off")
                 self.wait_until(lambda: latest_state() == "false fullscreen")
+                count = len(self.calls())
+                recovery_event()
+                time.sleep(1.3)
+                self.assertEqual(len(self.calls()), count)
                 self.conf.write_text("mode=maximized\n")
                 self.wait_until(lambda: latest_state() == "false maximized")
                 self.assertFalse(self.rule.exists())

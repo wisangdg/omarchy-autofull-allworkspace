@@ -108,5 +108,38 @@ BarWidget {
     onLoaded: root.synchronize()
   }
 
+  property int restoreAttempts: 0
+
+  function recover() {
+    root.restoreAttempts = 3
+    restoreDelay.restart()
+  }
+
+  IpcHandler {
+    target: "autofull"
+    function restore(): void { root.recover() }
+  }
+
+  Timer {
+    id: restoreDelay
+    interval: 1000
+    onTriggered: {
+      if (restorer.running) restart()
+      else {
+        root.restoreAttempts--
+        restorer.running = true
+      }
+    }
+  }
+
+  Process {
+    id: restorer
+    command: [root.scriptPath, "restore"]
+    onExited: function(exitCode, exitStatus) {
+      if ((exitCode !== 0 || exitStatus !== 0) && root.restoreAttempts > 0)
+        restoreDelay.restart()
+    }
+  }
+
   Component.onCompleted: root.synchronize()
 }

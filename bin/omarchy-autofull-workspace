@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=AutoFull Allworkspace: open every window fullscreen (toggle SUPER+ALT+X)
-# omarchy:args=[on|off|toggle|status|mode [fullscreen|maximized]|cycle|sync|bar]
+# omarchy:args=[on|off|toggle|status|mode [fullscreen|maximized]|cycle|sync|restore|bar]
 
 set -euo pipefail
 
@@ -57,17 +57,20 @@ atomic_write() {
 # Static rules only affect newly opened windows. Sync touches them only when
 # the requested mode changes, preserving manual window overrides on reload.
 write_rule() {
+  # Floating windows (dialogs, file pickers, recovery popups) are excluded with
+  # later rules: Hyprland applies effects top to bottom, so the last match wins.
+  # They would otherwise open covering the screen and be hard to dismiss.
   if [[ $1 == fullscreen ]]; then
-    printf -- '-- AutoFull Allworkspace (generated): every new window opens fullscreen.\no.window(".*", { fullscreen = true })\n' | atomic_write "$RULE_FILE"
+    printf -- '-- AutoFull Allworkspace (generated): every new window opens fullscreen (floating dialogs excluded).\no.window(".*", { fullscreen = true })\no.window({ tag = "floating-window" }, { fullscreen = false })\no.window({ float = true }, { fullscreen = false })\n' | atomic_write "$RULE_FILE"
   else
-    printf -- '-- AutoFull Allworkspace (generated): every new window opens maximized (full width).\no.window(".*", { maximize = true })\n' | atomic_write "$RULE_FILE"
+    printf -- '-- AutoFull Allworkspace (generated): every new window opens maximized (full width; floating dialogs excluded).\no.window(".*", { maximize = true })\no.window({ tag = "floating-window" }, { maximize = false })\no.window({ float = true }, { maximize = false })\n' | atomic_write "$RULE_FILE"
   fi
 }
 
 apply_to_open_windows() {
   local expression
   if [[ $1 != off ]]; then
-    expression="local m='$1' ; for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen({ mode=m, action='set', window=w })) end"
+    expression="local m='$1' ; for _,w in ipairs(hl.get_windows()) do if not w.floating then hl.dispatch(hl.dsp.window.fullscreen({ mode=m, action='set', window=w })) end end"
   else
     expression="for _,w in ipairs(hl.get_windows()) do hl.dispatch(hl.dsp.window.fullscreen_state({ internal=0, client=0, action='set', window=w })) end"
   fi
@@ -193,11 +196,14 @@ cycle)
   if [[ $(read_mode) == fullscreen ]]; then set_mode maximized; else set_mode fullscreen; fi
   ;;
 sync) sync_mode ;;
+restore)
+  if is_on; then apply_to_open_windows "$(active_mode)"; fi
+  ;;
 bar)
   if is_on; then printf 'on:%s\n' "$(display_mode)"; else printf 'off:%s\n' "$(display_mode)"; fi
   ;;
 *)
-  echo "usage: omarchy-autofull-workspace [on|off|toggle|status|mode [fullscreen|maximized]|cycle|sync|bar]" >&2
+  echo "usage: omarchy-autofull-workspace [on|off|toggle|status|mode [fullscreen|maximized]|cycle|sync|restore|bar]" >&2
   exit 1
   ;;
 esac

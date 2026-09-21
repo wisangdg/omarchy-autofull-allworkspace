@@ -97,7 +97,10 @@ The plugin writes a plain Hyprland Lua toggle:
 
 - `~/.local/state/omarchy/toggles/hypr/autofull-workspace.lua` — the window rule
   (`o.window(".*", { maximize = true })` or `{ fullscreen = true }`), which is
-  auto-loaded by Omarchy on `hyprctl reload`.
+  auto-loaded by Omarchy on `hyprctl reload`. Floating windows are excluded with
+  later rules (`tag = "floating-window"` and `float = true`), so dialogs, file
+  pickers, and recovery popups stay small and clickable instead of covering the
+  screen. Hyprland applies effects top to bottom, so the last match wins.
 - Enabling writes the rule and expands currently open windows once.
 - Disabling removes the rule and clears fullscreen/maximized on every window.
 - The rule only ever affects windows opened while it is active; it is never
